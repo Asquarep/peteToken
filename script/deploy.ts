@@ -1,63 +1,39 @@
 import { ethers } from "hardhat";
 
 const main = async () => {
-    const [deployer, seller, buyer] = await ethers.getSigners();
+    const [deployer, user1, user2] = await ethers.getSigners();
 
-    console.log(`Deploying contract with account: ${deployer.address}`);
+    console.log(`\nDeploying contract with account: ${deployer.address}`);
 
-    // Deploy Reverse Dutch Auction contract
-    const AuctionFactory = await ethers.getContractFactory("ReverseDutchAuction");
-    const auctionContract = await AuctionFactory.deploy();
-    await auctionContract.waitForDeployment();
-    const auctionAddress = await auctionContract.getAddress();
-    console.log(`Auction Contract deployed at: ${auctionAddress}`);
-
-    // ERC20 Mock Token Deployment (if you need a test token)
-    const TokenFactory = await ethers.getContractFactory("ERC20Mock");
-    const token = await TokenFactory.deploy("TestToken", "TTK", 18);
+    // Deploy PeteToken contract
+    const PeteToken = await ethers.getContractFactory("PeteToken");
+    const token = await PeteToken.deploy("PeteCoin", "PTC");
     await token.waitForDeployment();
     const tokenAddress = await token.getAddress();
-    console.log(`Mock Token deployed at: ${tokenAddress}`);
+    console.log(`\nPeteToken deployed at: ${tokenAddress}`);
 
-    // Seller mints and approves tokens
-    const tokenAmount = ethers.parseUnits("1000", 18); // 1000 TTK
-    await token.mint(seller.address, tokenAmount);
-    await token.connect(seller).approve(auctionAddress, tokenAmount);
-    console.log("Seller approved tokens for auction.");
+    // Check initial supply
+    const totalSupply = await token.getTotalSupply();
+    console.log(`\nTotal Supply: ${ethers.formatUnits(totalSupply, 18)} PTC`);
 
-    // Create auction
-    const initialPrice = ethers.parseUnits("100", 18); // 100 tokens
-    const duration = 300; // 5 minutes
-    const priceDecreaseRate = ethers.parseUnits("1", 18); // 1 token per second
+    // Transfer tokens from deployer to user1
+    const transferAmount = ethers.parseUnits("100", 18);
+    await token.transfer(user1.address, transferAmount);
+    console.log(`\nTransferred ${ethers.formatUnits(transferAmount, 18)} PTC to ${user1.address}`);
+    const user1Balance = await token.balanceOf(user1.address);
+    console.log(`\nUser 1 balance: ${user1Balance}`);
 
-    const tx = await auctionContract.connect(seller).createAuction(
-        tokenAddress,
-        tokenAmount,
-        initialPrice,
-        duration,
-        priceDecreaseRate
-    );
-    await tx.wait();
-    console.log("Auction created successfully.");
+    // Approve user2 to spend on behalf of user1
+    const approvedAmount = ethers.parseUnits("60", 18);
+    await token.connect(user1).approve(user2.address, approvedAmount);
+    console.log(`\n${user1.address} approved ${approvedAmount} PTC for ${user2.address}`);
 
-    // Wait some time before buying (simulate price drop)
-    console.log("Waiting for price to drop...");
-    await new Promise(resolve => setTimeout(resolve, 5000)); // Simulate 5 sec delay
+    // user2 transfers from user1 to deployer
+    const spendAmount = ethers.parseUnits("20", 18);
+    await token.connect(user2).transferFrom(user1.address, deployer.address, spendAmount);
+    console.log(`\n${user2.address} transferred ${spendAmount} PTC from ${user1.address} to ${deployer.address}`);
 
-    // Check current price
-    const auctionId = 1;
-    const currentPrice = await auctionContract.getCurrentPrice(auctionId);
-    console.log(`Current price after delay: ${ethers.formatUnits(currentPrice, 18)} TTK`);
-
-    // Buyer approves payment and buys at the reduced price
-    await token.mint(buyer.address, initialPrice); // Mint enough for purchase
-    await token.connect(buyer).approve(auctionAddress, initialPrice);
-    console.log("Buyer approved token for purchase.");
-
-    await auctionContract.connect(buyer).buy(auctionId);
-    console.log("Auction successfully finalized by buyer.");
-
-    console.log("Script execution completed.");
+    console.log("\nScript execution completed.");
 };
 
 // Execute the script
